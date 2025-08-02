@@ -1,0 +1,38 @@
+openapi: 3.0.1
+info:
+  title: Toko Escalation MCP
+  description: API untuk mengirim pesan ke owner toko melalui WhatsApp Gateway.
+  version: 1.0.0
+servers:
+  - url: http://localhost:3001
+paths:
+  /escalate:
+    post:
+      summary: Kirim pesan ke owner
+      operationId: escalateToOwner
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  description: Pesan yang akan dikirim ke owner.
+              required:
+                - message
+      responses:
+        "200":
+          description: Pesan berhasil dikirim
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  sent_to:
+                    type: string
+                  gateway_response:
+                    type: object
