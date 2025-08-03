@@ -4,7 +4,7 @@ import express from 'express';
 import cors from 'cors';
 import { z } from 'zod';
 
-// Configuration
+// WhatsApp Gateway configuration
 const WA_GATEWAY_CONFIG = {
   endpoint: "https://revanetic.my.id/send-message",
   api_key: "lI54u2OFyfrRzHdXxkJ1JY0hSrMXaE", // Ganti dengan API key Anda
@@ -13,9 +13,47 @@ const WA_GATEWAY_CONFIG = {
 };
 
 const SERVER_CONFIG = {
-  port: parseInt(process.env.PORT || '3000', 10),
+  port: parseInt(process.env.PORT || '8000', 10),
   host: process.env.HOST || '0.0.0.0',
 };
+
+// Message history storage (in production, use proper database)
+interface MessageHistory {
+  message: string;
+  target: string;
+  timestamp: string;
+  status: 'sent' | 'failed' | 'error';
+  response?: any;
+  error?: string;
+}
+
+const messageHistory: MessageHistory[] = [];
+
+// MCP Tool Definitions
+interface MCPTool {
+  name: string;
+  description: string;
+  inputSchema: {
+    type: string;
+    properties: Record<string, any>;
+    required: string[];
+  };
+}
+
+interface MCPSearchResult {
+  id: string;
+  title: string;
+  text: string;
+  url: string;
+}
+
+interface MCPFetchResult {
+  id: string;
+  title: string;
+  text: string;
+  url: string;
+  metadata?: Record<string, any>;
+}
 
 interface SendMessageRequest {
   api_key: string;
@@ -24,37 +62,16 @@ interface SendMessageRequest {
   message: string;
 }
 
-interface MCPToolCall {
-  name: string;
-  arguments: {
-    message: string;
-    number?: string;
-  };
-}
-
-interface MCPResponse {
-  content: Array<{
-    type: string;
-    text: string;
-  }>;
-  isError?: boolean;
-}
-
 // Validation schemas
-const SendMessageSchema = z.object({
-  message: z.string().min(1, "Pesan tidak boleh kosong"),
-  number: z.string().optional(),
+const SearchSchema = z.object({
+  query: z.string().min(1, "Query cannot be empty"),
 });
 
-const MCPToolCallSchema = z.object({
-  name: z.string(),
-  arguments: z.object({
-    message: z.string(),
-    number: z.string().optional(),
-  }),
+const FetchSchema = z.object({
+  id: z.string().min(1, "ID cannot be empty"),
 });
 
-class WhatsAppGatewayHTTPServer {
+class WhatsAppMCPServer {
   private app: express.Application;
 
   constructor() {
@@ -82,67 +99,104 @@ class WhatsAppGatewayHTTPServer {
         status: 'ok',
         timestamp: new Date().toISOString(),
         service: 'WhatsApp Gateway MCP Server',
+        config: {
+          endpoint: WA_GATEWAY_CONFIG.endpoint,
+          sender: WA_GATEWAY_CONFIG.sender,
+          owner: WA_GATEWAY_CONFIG.owner_number,
+        }
       });
     });
 
-    // MCP Tools List
+    // MCP Server-Sent Events endpoint (required for ChatGPT)
+    this.app.get('/sse', (req, res) => {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Headers': 'Cache-Control',
+      });
+
+      // Send server info
+      const serverInfo = {
+        type: 'server_info',
+        data: {
+          name: 'WhatsApp Gateway MCP Server',
+          version: '1.0.0',
+          capabilities: ['search', 'fetch'],
+          description: 'WhatsApp messaging capabilities for ChatGPT integration'
+        }
+      };
+
+      res.write(`data: ${JSON.stringify(serverInfo)}\n\n`);
+
+      // Handle MCP tool calls via SSE
+      req.on('close', () => {
+        console.log('SSE connection closed');
+      });
+
+      // Keep connection alive
+      const keepAlive = setInterval(() => {
+        res.write(`data: ${JSON.stringify({ type: 'ping', timestamp: Date.now() })}\n\n`);
+      }, 30000);
+
+      req.on('close', () => {
+        clearInterval(keepAlive);
+      });
+    });
+
+    // MCP Tools endpoint
     this.app.get('/tools', (req, res) => {
-      res.json({
-        tools: [
-          {
-            name: "send_wa_message",
-            description: "Mengirim pesan WhatsApp ke owner melalui gateway",
-            inputSchema: {
-              type: "object",
-              properties: {
-                message: {
-                  type: "string",
-                  description: "Pesan yang akan dikirim ke owner",
-                },
-                number: {
-                  type: "string",
-                  description: "Nomor tujuan (opsional, default ke owner)",
-                },
-              },
-              required: ["message"],
+      const tools: MCPTool[] = [
+        {
+          name: "search",
+          description: "Search WhatsApp capabilities and message history",
+          inputSchema: {
+            type: "object",
+            properties: {
+              query: {
+                type: "string",
+                description: "Search query for WhatsApp operations or message history"
+              }
             },
-          },
-        ],
-      });
+            required: ["query"]
+          }
+        },
+        {
+          name: "fetch",
+          description: "Execute WhatsApp operations or retrieve detailed information",
+          inputSchema: {
+            type: "object",
+            properties: {
+              id: {
+                type: "string",
+                description: "Operation ID or capability identifier"
+              }
+            },
+            required: ["id"]
+          }
+        }
+      ];
+
+      res.json({ tools });
     });
 
-    // Direct send message endpoint
-    this.app.post('/send', async (req, res) => {
-      try {
-        const { message, number } = SendMessageSchema.parse(req.body);
-        const targetNumber = number || WA_GATEWAY_CONFIG.owner_number;
-        
-        const result = await this.sendWhatsAppMessage(message, targetNumber);
-        
-        res.json({
-          success: true,
-          message: "Pesan berhasil dikirim",
-          data: {
-            target: targetNumber,
-            message: message,
-            response: result,
-          },
-        });
-      } catch (error) {
-        console.error('Error sending message:', error);
-        res.status(400).json({
-          success: false,
-          message: error instanceof Error ? error.message : String(error),
-        });
-      }
-    });
-
-    // MCP Tool Call endpoint
+    // MCP Tool execution endpoint
     this.app.post('/tools/call', async (req, res) => {
       try {
-        const toolCall = MCPToolCallSchema.parse(req.body);
-        const response = await this.handleToolCall(toolCall);
-        res.json(response);
+        const { name, arguments: args } = req.body;
+
+        if (name === 'search') {
+          const { query } = SearchSchema.parse(args);
+          const result = await this.handleSearch(query);
+          res.json({ content: [{ type: 'text', text: JSON.stringify(result) }] });
+        } else if (name === 'fetch') {
+          const { id } = FetchSchema.parse(args);
+          const result = await this.handleFetch(id);
+          res.json({ content: [{ type: 'text', text: JSON.stringify(result) }] });
+        } else {
+          throw new Error(`Unknown tool: ${name}`);
+        }
       } catch (error) {
         console.error('Error handling tool call:', error);
         res.status(400).json({
@@ -157,34 +211,45 @@ class WhatsAppGatewayHTTPServer {
       }
     });
 
-    // Send to owner shortcut
+    // Direct endpoints for testing
+    this.app.post('/search', async (req, res) => {
+      try {
+        const { query } = SearchSchema.parse(req.body);
+        const result = await this.handleSearch(query);
+        res.json(result);
+      } catch (error) {
+        res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+      }
+    });
+
+    this.app.post('/fetch', async (req, res) => {
+      try {
+        const { id } = FetchSchema.parse(req.body);
+        const result = await this.handleFetch(id);
+        res.json(result);
+      } catch (error) {
+        res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+      }
+    });
+
+    // Legacy endpoints (for backward compatibility)
     this.app.post('/send-to-owner', async (req, res) => {
       try {
         const { message } = req.body;
-        
         if (!message) {
-          return res.status(400).json({
-            success: false,
-            message: "Pesan tidak boleh kosong",
-          });
+          return res.status(400).json({ success: false, message: "Message required" });
         }
 
-        const result = await this.sendWhatsAppMessage(message, WA_GATEWAY_CONFIG.owner_number);
-        
+        const result = await this.sendWhatsAppMessage(message);
         res.json({
           success: true,
-          message: "Pesan berhasil dikirim ke owner",
-          data: {
-            target: WA_GATEWAY_CONFIG.owner_number,
-            message: message,
-            response: result,
-          },
+          message: "Message sent to owner",
+          data: result
         });
       } catch (error) {
-        console.error('Error sending message to owner:', error);
         res.status(500).json({
           success: false,
-          message: error instanceof Error ? error.message : String(error),
+          message: error instanceof Error ? error.message : String(error)
         });
       }
     });
@@ -205,56 +270,229 @@ class WhatsAppGatewayHTTPServer {
         message: 'Endpoint not found',
         availableEndpoints: [
           'GET /health',
+          'GET /sse',
           'GET /tools',
-          'POST /send',
           'POST /tools/call',
+          'POST /search',
+          'POST /fetch',
           'POST /send-to-owner',
         ],
       });
     });
   }
 
-  private async handleToolCall(toolCall: MCPToolCall): Promise<MCPResponse> {
-    if (toolCall.name === "send_wa_message") {
-      try {
-        const { message, number } = toolCall.arguments;
-        const targetNumber = number || WA_GATEWAY_CONFIG.owner_number;
-
-        if (!message) {
-          throw new Error("Pesan tidak boleh kosong");
-        }
-
-        const result = await this.sendWhatsAppMessage(message, targetNumber);
+  private async handleSearch(query: string): Promise<{ results: MCPSearchResult[] }> {
+    console.log(`Searching WhatsApp capabilities for query: '${query}'`);
+    
+    const results: MCPSearchResult[] = [];
+    const queryLower = query.toLowerCase();
+    
+    // Search capabilities
+    const capabilities = [
+      {
+        id: "send_to_owner",
+        title: "Send Message to Owner",
+        description: "Send WhatsApp message to the predefined owner number",
+        keywords: ["send", "owner", "notification", "alert", "message"]
+      },
+      {
+        id: "send_to_number",
+        title: "Send Message to Specific Number", 
+        description: "Send WhatsApp message to any specified phone number",
+        keywords: ["send", "number", "custom", "specific", "phone"]
+      },
+      {
+        id: "gateway_status",
+        title: "Gateway Status",
+        description: "Check WhatsApp gateway configuration and status",
+        keywords: ["status", "config", "gateway", "health", "check"]
+      }
+    ];
+    
+    // Search in capabilities
+    for (const capability of capabilities) {
+      if (queryLower.includes(capability.title.toLowerCase()) ||
+          queryLower.includes(capability.description.toLowerCase()) ||
+          capability.keywords.some(keyword => queryLower.includes(keyword))) {
         
+        results.push({
+          id: capability.id,
+          title: capability.title,
+          text: capability.description,
+          url: `whatsapp://capability/${capability.id}`
+        });
+      }
+    }
+    
+    // Search in message history
+    const recentMessages = messageHistory.slice(-10); // Last 10 messages
+    for (let i = 0; i < recentMessages.length; i++) {
+      const msg = recentMessages[i];
+      if (msg.message.toLowerCase().includes(queryLower)) {
+        results.push({
+          id: `msg_${i}`,
+          title: `Message to ${msg.target}`,
+          text: msg.message.length > 100 ? msg.message.substring(0, 100) + "..." : msg.message,
+          url: `whatsapp://message/${i}`
+        });
+      }
+    }
+    
+    // If no specific matches, provide general capabilities
+    if (results.length === 0) {
+      results.push({
+        id: "help",
+        title: "WhatsApp Gateway Help",
+        text: "Available operations: send messages to owner, send to specific numbers, check status",
+        url: "whatsapp://help"
+      });
+    }
+    
+    console.log(`WhatsApp search returned ${results.length} results`);
+    return { results };
+  }
+
+  private async handleFetch(id: string): Promise<MCPFetchResult> {
+    console.log(`Executing WhatsApp operation: ${id}`);
+    
+    // Handle different operation types
+    if (id === "send_to_owner") {
+      return {
+        id,
+        title: "Send Message to Owner",
+        text: `Send WhatsApp Message to Owner
+
+Configuration:
+- Owner Number: ${WA_GATEWAY_CONFIG.owner_number}
+- Gateway: ${WA_GATEWAY_CONFIG.endpoint}
+- Sender: ${WA_GATEWAY_CONFIG.sender}
+
+To send a message, provide the message content and this operation will
+deliver it to the owner via WhatsApp gateway.
+
+Usage: Specify message content to send notification to owner.`,
+        url: "whatsapp://send_to_owner",
+        metadata: {
+          operation: "send_message",
+          target: "owner",
+          requires_message: true
+        }
+      };
+    }
+    
+    if (id === "send_to_number") {
+      return {
+        id,
+        title: "Send Message to Specific Number",
+        text: `Send WhatsApp Message to Specific Number
+
+Configuration:
+- Gateway: ${WA_GATEWAY_CONFIG.endpoint}
+- Sender: ${WA_GATEWAY_CONFIG.sender}
+
+This operation allows sending WhatsApp messages to any phone number.
+Phone numbers should be in international format (e.g., 628xxxxxxxxx).
+
+Usage: Specify target number and message content.`,
+        url: "whatsapp://send_to_number",
+        metadata: {
+          operation: "send_message",
+          target: "custom", 
+          requires_message: true,
+          requires_number: true
+        }
+      };
+    }
+    
+    if (id === "gateway_status") {
+      return {
+        id,
+        title: "Gateway Status",
+        text: `WhatsApp Gateway Status
+
+Endpoint: ${WA_GATEWAY_CONFIG.endpoint}
+API Key: ${'*'.repeat(WA_GATEWAY_CONFIG.api_key.length - 4)}${WA_GATEWAY_CONFIG.api_key.slice(-4)}
+Sender: ${WA_GATEWAY_CONFIG.sender}
+Owner: ${WA_GATEWAY_CONFIG.owner_number}
+
+Gateway is configured and ready to send messages.
+Total messages sent: ${messageHistory.length}`,
+        url: "whatsapp://status",
+        metadata: {
+          status: "active",
+          messages_sent: messageHistory.length,
+          last_message: messageHistory[messageHistory.length - 1] || null
+        }
+      };
+    }
+    
+    // Handle message history
+    if (id.startsWith("msg_")) {
+      const msgIndex = parseInt(id.split("_")[1]);
+      if (msgIndex >= 0 && msgIndex < messageHistory.length) {
+        const msg = messageHistory[msgIndex];
         return {
-          content: [
-            {
-              type: "text",
-              text: `✅ Pesan berhasil dikirim ke ${targetNumber}\n\nPesan: ${message}\n\nResponse: ${JSON.stringify(result, null, 2)}`,
-            },
-          ],
-        };
-      } catch (error) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `❌ Gagal mengirim pesan: ${error instanceof Error ? error.message : String(error)}`,
-            },
-          ],
-          isError: true,
+          id,
+          title: `Message to ${msg.target}`,
+          text: `Message Details:
+Target: ${msg.target}
+Message: ${msg.message}
+Timestamp: ${msg.timestamp}
+Status: ${msg.status}`,
+          url: `whatsapp://message/${msgIndex}`,
+          metadata: msg
         };
       }
     }
+    
+    // Handle direct send operations
+    if (id.startsWith("send:")) {
+      const parts = id.split(":", 3);
+      if (parts.length >= 2) {
+        const message = parts[1];
+        const targetNumber = parts.length > 2 ? parts[2] : undefined;
+        
+        const result = await this.sendWhatsAppMessage(message, targetNumber);
+        
+        return {
+          id,
+          title: "WhatsApp Message Sent", 
+          text: `Message: ${message}\nTarget: ${targetNumber || 'owner'}\nResult: ${JSON.stringify(result, null, 2)}`,
+          url: "whatsapp://sent",
+          metadata: result
+        };
+      }
+    }
+    
+    // Default help response
+    return {
+      id: "help",
+      title: "WhatsApp Gateway Help",
+      text: `Available Operations:
+1. send_to_owner - Send message to predefined owner
+2. send_to_number - Send message to specific number
+3. gateway_status - Check gateway configuration  
+4. send:MESSAGE:NUMBER - Direct send operation
 
-    throw new Error(`Tool tidak dikenal: ${toolCall.name}`);
+Message History: Access recent messages via msg_X IDs
+
+To send a message, use format: send:Your message here:62888123456
+Or just use send:Your message here (sends to owner)`,
+      url: "whatsapp://help",
+      metadata: {
+        available_operations: ["send_to_owner", "send_to_number", "gateway_status"],
+        direct_send_format: "send:MESSAGE:NUMBER"
+      }
+    };
   }
 
-  private async sendWhatsAppMessage(message: string, targetNumber: string): Promise<any> {
+  private async sendWhatsAppMessage(message: string, targetNumber?: string): Promise<any> {
+    const target = targetNumber || WA_GATEWAY_CONFIG.owner_number;
+    
     const payload: SendMessageRequest = {
       api_key: WA_GATEWAY_CONFIG.api_key,
       sender: WA_GATEWAY_CONFIG.sender,
-      number: targetNumber,
+      number: target,
       message: message,
     };
 
@@ -267,50 +505,79 @@ class WhatsAppGatewayHTTPServer {
         body: JSON.stringify(payload),
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
       const result = await response.json();
+      
+      // Store in message history
+      const historyEntry: MessageHistory = {
+        message,
+        target,
+        timestamp: new Date().toISOString(),
+        status: response.ok ? 'sent' : 'failed',
+        response: result
+      };
+      messageHistory.push(historyEntry);
+      
+      console.log(`WhatsApp message sent to ${target}: ${message}`);
       return result;
+      
     } catch (error) {
+      const errorEntry: MessageHistory = {
+        message,
+        target,
+        timestamp: new Date().toISOString(),
+        status: 'error',
+        error: error instanceof Error ? error.message : String(error)
+      };
+      messageHistory.push(errorEntry);
+      
       console.error("Error sending WhatsApp message:", error);
       throw error;
     }
   }
 
   public start() {
+    // Validate configuration
+    const requiredVars = ['WA_GATEWAY_API_KEY', 'WA_GATEWAY_SENDER', 'WA_GATEWAY_OWNER'];
+    const missingVars = requiredVars.filter(varName => !process.env[varName]);
+    
+    if (missingVars.length > 0) {
+      console.warn(`⚠️  Missing environment variables: ${missingVars.join(', ')}`);
+      console.info('Using default configuration - please set proper values');
+    }
+
     this.app.listen(SERVER_CONFIG.port, SERVER_CONFIG.host, () => {
       console.log(`🚀 WhatsApp Gateway MCP Server running on http://${SERVER_CONFIG.host}:${SERVER_CONFIG.port}`);
       console.log(`📱 Health check: http://${SERVER_CONFIG.host}:${SERVER_CONFIG.port}/health`);
+      console.log(`🔗 SSE endpoint: http://${SERVER_CONFIG.host}:${SERVER_CONFIG.port}/sse/`);
       console.log(`🛠️  Tools endpoint: http://${SERVER_CONFIG.host}:${SERVER_CONFIG.port}/tools`);
-      console.log(`📨 Send message: POST http://${SERVER_CONFIG.host}:${SERVER_CONFIG.port}/send`);
-      console.log(`👤 Send to owner: POST http://${SERVER_CONFIG.host}:${SERVER_CONFIG.port}/send-to-owner`);
+      console.log(`📨 Gateway: ${WA_GATEWAY_CONFIG.endpoint}`);
+      console.log(`👤 Owner: ${WA_GATEWAY_CONFIG.owner_number}`);
+      console.log('');
+      console.log('💡 For ChatGPT integration, use: http://your-domain.com:8000/sse/');
     });
   }
 }
 
 // Main execution
 async function main() {
-  const server = new WhatsAppGatewayHTTPServer();
+  const server = new WhatsAppMCPServer();
   server.start();
 }
 
 // Handle process termination
-process.on("SIGINT", async () => {
+process.on("SIGINT", () => {
   console.log("\n🛑 Shutting down server...");
   process.exit(0);
 });
 
-process.on("SIGTERM", async () => {
+process.on("SIGTERM", () => {
   console.log("\n🛑 Shutting down server...");
   process.exit(0);
 });
 
-// Always run the server when this file is executed directly
 main().catch((error) => {
   console.error("❌ Server error:", error);
   process.exit(1);
 });
 
-export { WhatsAppGatewayHTTPServer };
+export { WhatsAppMCPServer };
