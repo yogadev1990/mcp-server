@@ -7,9 +7,9 @@ import { z } from 'zod';
 // Configuration
 const WA_GATEWAY_CONFIG = {
   endpoint: "https://revanetic.my.id/send-message",
-  api_key: "1234567890", // Ganti dengan API key Anda
-  sender: "62888xxxx", // Ganti dengan nomor sender Anda
-  owner_number: "62888xxxx", // Ganti dengan nomor owner/penerima
+  api_key: "lI54u2OFyfrRzHdXxkJ1JY0hSrMXaE", // Ganti dengan API key Anda
+  sender: "6281539302056", // Ganti dengan nomor sender Anda
+  owner_number: "6285159199040", // Ganti dengan nomor owner/penerima
 };
 
 const SERVER_CONFIG = {
