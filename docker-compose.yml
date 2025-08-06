@@ -1,0 +1,21 @@
+version: "3.8"
+
+services:
+  mcp-manager:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mcp-manager
+    restart: unless-stopped
+    ports:
+      - "2005:2005"
+    networks:
+      - proxy-net
+    environment:
+      - TZ=Asia/Jakarta
+    volumes:
+      - ./app:/app
+
+networks:
+  proxy-net:
+    external: true
