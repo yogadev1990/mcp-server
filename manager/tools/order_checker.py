@@ -15,10 +15,13 @@ ORDER_API_URL = "https://revandastore.com/api/payment/"
 def register_order_checker_tool(server: FastMCP):
     @server.tool()
     async def check_order_status(order_id: str):
+        headers = {
+            "User-Agent": "Mozilla/5.0"
+        }
         try:
             print(f"[MCP] Memeriksa order ID: {order_id}")
             url = ORDER_API_URL + order_id
-            res = requests.get(url, timeout=10)
+            res = requests.get(url, headers=headers, timeout=10)
             res.raise_for_status()
             data = res.json()
 
