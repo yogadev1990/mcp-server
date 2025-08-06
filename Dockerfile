@@ -4,14 +4,14 @@ FROM python:3.11-slim
 RUN pip install --upgrade pip
 RUN pip install fastmcp flask
 
-# Create working directory
+# Set workdir ke dalam folder manage
 WORKDIR /app
 
-# Copy all source code
-COPY . /app
+# Copy folder manage ke dalam /app
+COPY manager /app
 
-# Expose port
+# Expose port yang kamu pakai (misal: 2005)
 EXPOSE 2005
 
-# Run MCP server
-CMD ["python", "main.py"]
+# Jalankan file app.py (atau nama file utama kamu)
+CMD ["python", "app.py"]
