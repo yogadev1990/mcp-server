@@ -7,8 +7,8 @@ RUN pip install fastmcp flask
 # Create working directory
 WORKDIR /app
 
-# Copy source code
-COPY app /app
+# Copy all source code
+COPY . /app
 
 # Expose port
 EXPOSE 2005
