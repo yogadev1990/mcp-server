@@ -16,7 +16,10 @@ def register_order_checker_tool(server: FastMCP):
     @server.tool()
     async def check_order_status(order_id: str):
         headers = {
-            "User-Agent": "Mozilla/5.0"
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Connection": "keep-alive",
         }
         try:
             print(f"[MCP] Memeriksa order ID: {order_id}")
