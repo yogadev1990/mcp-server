@@ -3,6 +3,7 @@ Tool MCP untuk pengecekan status order via API toko.
 """
 
 import requests
+import traceback
 from fastmcp import FastMCP
 
 WA_API_KEY = "lI54u2OFyfrRzHdXxkJ1JY0hSrMXaE"
@@ -15,12 +16,16 @@ def register_order_checker_tool(server: FastMCP):
     @server.tool()
     async def check_order_status(order_id: str):
         try:
+            print(f"[MCP] Memeriksa order ID: {order_id}")
             url = ORDER_API_URL + order_id
             res = requests.get(url, timeout=10)
             res.raise_for_status()
             data = res.json()
 
+            print(f"[MCP] Response dari API:\n{data}")
+
             if not data.get("success"):
+                print(f"[MCP] Order ID {order_id} tidak ditemukan.")
                 return {
                     "success": False,
                     "error": "Order tidak ditemukan.",
@@ -35,13 +40,16 @@ def register_order_checker_tool(server: FastMCP):
             notify = False
             if provider == "Manual" and status == "Processing":
                 msg = f"Pesanan manual:\nOrder ID: {order_id}\nProduk: {product}\nStatus: {status}"
+                print("[MCP] Mengirim notifikasi WA untuk pesanan manual...")
                 send_whatsapp(msg)
                 notify = True
             elif status.lower() in ["canceled", "gagal", "error"]:
                 msg = f"Pesanan error:\nOrder ID: {order_id}\nStatus: {status}"
+                print("[MCP] Mengirim notifikasi WA untuk pesanan error...")
                 send_whatsapp(msg)
                 notify = True
 
+            print("[MCP] Pemeriksaan selesai, mengembalikan hasil.")
             return {
                 "success": True,
                 "order_id": order_id,
@@ -54,6 +62,8 @@ def register_order_checker_tool(server: FastMCP):
             }
 
         except Exception as e:
+            print(f"[MCP] ERROR saat memeriksa order: {e}")
+            traceback.print_exc()
             return {
                 "success": False,
                 "error": str(e),
@@ -68,8 +78,12 @@ def send_whatsapp(message: str):
         "message": message
     }
     try:
+        print(f"[MCP] Mengirim pesan WA ke owner:\n{payload}")
         r = requests.post(WA_ENDPOINT, json=payload, timeout=10)
         r.raise_for_status()
+        print("[MCP] Pesan WA berhasil dikirim.")
         return {"success": True}
     except Exception as e:
+        print(f"[MCP] Gagal mengirim WA: {e}")
+        traceback.print_exc()
         return {"success": False, "error": str(e)}
