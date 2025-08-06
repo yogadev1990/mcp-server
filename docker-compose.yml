@@ -13,8 +13,6 @@ services:
       - proxy-net
     environment:
       - TZ=Asia/Jakarta
-    volumes:
-      # - ./app:/app
 
 networks:
   proxy-net:
