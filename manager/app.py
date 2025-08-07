@@ -5,6 +5,8 @@ MCP Server Manager - Menampung dan mengelola tools MCP via Flask
 
 from flask import Flask
 from tools.order_checker import register_order_checker_tool
+from tools.katalog_tool import register_katalog_tool
+
 
 from fastmcp import FastMCP
 
@@ -13,11 +15,12 @@ app = Flask(__name__)
 # Konfigurasi MCP Server Manager
 server = FastMCP(
     name="MCP Server Manager",
-    instructions="Server ini mengelola berbagai tool MCP seperti pengecekan status order."
+    instructions="Server ini mengelola berbagai tools MCP."
 )
 
 # Register semua tools MCP
 register_order_checker_tool(server)
+register_katalog_tool(server)
 
 @app.route("/")
 def index():
