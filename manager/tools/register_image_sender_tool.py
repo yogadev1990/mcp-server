@@ -7,7 +7,7 @@ import traceback
 from fastmcp import FastMCP
 
 WA_API_KEY = "lI54u2OFyfrRzHdXxkJ1JY0hSrMXaE"
-WA_SENDER = "6281539302056"
+WA_SENDER = "6285167592416"
 WA_ENDPOINT = "https://revanetic.my.id/send-media"
 
 def register_image_sender_tool(server: FastMCP):
