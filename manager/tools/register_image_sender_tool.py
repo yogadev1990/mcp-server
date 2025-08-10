@@ -19,9 +19,9 @@ def register_image_sender_tool(server: FastMCP):
                 "api_key": WA_API_KEY,
                 "sender": WA_SENDER,
                 "number": number,
-                "media_url": image_url,
+                "url": image_url,
                 "caption": caption,
-                "type": "image"
+                "media_type": "image"
             }
 
             print(f"[MCP] Payload:\n{payload}")
