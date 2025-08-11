@@ -12,10 +12,16 @@ TORAMPEDIA_MONSTER_API_URL = "https://torampedia.my.id/api/v1/monster/"
 def register_search_monster_tool(server: FastMCP):
     @server.tool()
     async def search_monster(monster_name: str):
+        headers = {
+        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Connection": "keep-alive",
+        }
         try:
             print(f"[MCP] Mencari monster: {monster_name}")
             url = f"{TORAMPEDIA_MONSTER_API_URL}{monster_name}"
-            res = requests.get(url, timeout=15)
+            res = requests.get(url, headers=headers, timeout=10)
             res.raise_for_status()
             data = res.json().get("data", [])
 
