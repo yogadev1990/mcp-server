@@ -1,6 +1,6 @@
 """
 Tool MCP untuk mencari skill dari Torampedia berdasarkan nama atau kata kunci.
-Versi ini menggunakan summary yang ringkas dan hemat token untuk LLM.
+Versi ini menampilkan semua data penting termasuk info.
 """
 
 import requests
@@ -13,11 +13,19 @@ def register_search_skill_tool(server: FastMCP):
     @server.tool()
     async def search_skill(query: str):
         headers = {
-        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
-        "Connection": "keep-alive",
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
+            "Accept": "application/json",
+            "Connection": "keep-alive",
         }
+
+        import re
+        if not query.strip():
+            return {"success": False, "summary": "Query kosong. Masukkan nama skill."}
+        if len(query) > 50:
+            return {"success": False, "summary": "Query terlalu panjang. Maksimal 50 karakter."}
+        if not re.match(r"^[a-zA-Z0-9\s\-]+$", query):
+            return {"success": False, "summary": "Karakter tidak valid. Gunakan huruf, angka, spasi, atau tanda minus saja."}
+
         try:
             print(f"[MCP] Mencari skill: {query}")
             url = f"{TORAMPEDIA_SKILL_API_URL}{query}"
@@ -26,40 +34,59 @@ def register_search_skill_tool(server: FastMCP):
             data = res.json().get("data", [])
 
             if not data:
-                print(f"[MCP] Skill '{query}' tidak ditemukan.")
                 return {
                     "success": False,
-                    "error": "Skill tidak ditemukan.",
                     "summary": f"Skill '{query}' tidak ditemukan di Torampedia."
                 }
 
+            filtered_data = []
             summary_lines = []
+
             for skill in data:
-                name_id = skill.get("name_id", "N/A")
-                name_en = skill.get("name_en", "N/A")
-                skill_type = skill.get("type", "N/A")
-                mp = f"{skill.get('mp', 'N/A')} MP"
-                range_ = f"{skill.get('range', 'N/A')}m"
-                element = skill.get("element", "N/A")
-                tier = skill.get("tier", "N/A")
-                combo_parts = []
-                if skill.get("combo_start"): combo_parts.append("Start")
-                if skill.get("combo_mid"): combo_parts.append("Mid")
-                combo_text = ", ".join(combo_parts) if combo_parts else "N/A"
-                desc = skill.get("desc_id", "N/A")
-                parent = skill.get("parent", {})
-                category = f"{parent.get('name_id', 'N/A')} ({parent.get('name_en', 'N/A')})"
-                link = f"https://torampedia.my.id/skills/{parent.get('id', '')}"
+                filtered_skill = {
+                    "id": skill.get("id"),
+                    "name_id": skill.get("name_id", "N/A"),
+                    "name_en": skill.get("name_en", "N/A"),
+                    "type": skill.get("type", "N/A"),
+                    "mp": skill.get("mp", "N/A"),
+                    "combo_start": skill.get("combo_start"),
+                    "combo_mid": skill.get("combo_mid"),
+                    "element": skill.get("element", "N/A"),
+                    "range": skill.get("range", "N/A"),
+                    "tier": skill.get("tier", "N/A"),
+                    "description": skill.get("desc_id", "N/A"), 
+                    "info": skill.get("info", "N/A"),
+                    "weapon": skill.get("weapon", []),
+                    "parent": {
+                        "id": skill.get("parent", {}).get("id"),
+                        "name_id": skill.get("parent", {}).get("name_id", "N/A"),
+                        "name_en": skill.get("parent", {}).get("name_en", "N/A")
+                    },
+                    "link": f"https://torampedia.my.id/skills/{skill.get('parent', {}).get('id', '')}"
+                }
+                filtered_data.append(filtered_skill)
+
+                combo_text = []
+                if skill.get("combo_start"): combo_text.append("Start")
+                if skill.get("combo_mid"): combo_text.append("Mid")
+                combo_str = ", ".join(combo_text) if combo_text else "N/A"
 
                 summary_lines.append(
-                    f"{name_id} ({name_en}) | Tipe: {skill_type} | MP: {mp} | Range: {range_} | Elemen: {element} | Tier: {tier} | Combo: {combo_text} | Kategori: {category} | Link: {link}"
+                    f"{filtered_skill['name_id']} ({filtered_skill['name_en']}) | "
+                    f"Tipe: {filtered_skill['type']} | MP: {filtered_skill['mp']} | "
+                    f"Range: {filtered_skill['range']}m | Elemen: {filtered_skill['element']} | "
+                    f"Tier: {filtered_skill['tier']} | Combo: {combo_str} | "
+                    f"Deskripsi: {filtered_skill['description']} | "
+                    f"Info: {filtered_skill['info']} | "
+                    f"Kategori: {filtered_skill['parent']['name_id']} ({filtered_skill['parent']['name_en']}) | "
+                    f"Link: {filtered_skill['link']}"
                 )
 
             summary = "\n".join(summary_lines)
 
             return {
                 "success": True,
-                "data": data,
+                "data": filtered_data,
                 "summary": summary
             }
 
@@ -68,6 +95,5 @@ def register_search_skill_tool(server: FastMCP):
             traceback.print_exc()
             return {
                 "success": False,
-                "error": str(e),
                 "summary": "Gagal konek ke API Torampedia. Coba akses manual di https://torampedia.my.id/others/skill"
             }

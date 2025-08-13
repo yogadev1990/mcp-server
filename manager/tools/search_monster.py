@@ -1,6 +1,6 @@
 """
 Tool MCP untuk mencari monster dari Torampedia berdasarkan nama monster.
-Versi ini menggunakan summary yang ringkas dan hemat token untuk LLM.
+Versi ini menggunakan summary yang ringkas namun mencakup semua data penting.
 """
 
 import requests
@@ -13,10 +13,10 @@ def register_search_monster_tool(server: FastMCP):
     @server.tool()
     async def search_monster(monster_name: str):
         headers = {
-        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.5",
-        "Connection": "keep-alive",
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36",
+            "Accept": "application/json",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Connection": "keep-alive",
         }
         try:
             print(f"[MCP] Mencari monster: {monster_name}")
@@ -38,16 +38,29 @@ def register_search_monster_tool(server: FastMCP):
                 name_id = monster.get("name_id", "N/A")
                 name_en = monster.get("name_en", "N/A")
                 level = monster.get("level", "N/A")
+                type_ = monster.get("type", "N/A")
                 element = monster.get("element", "N/A")
                 exp = monster.get("exp", "0")
                 hp = monster.get("hp", "0")
-                map_name = monster.get("map", {}).get("name_en") or monster.get("map", {}).get("name_id", "N/A")
-                monster_id = monster.get("id", "")
+                mode = monster.get("mode", "N/A")
+                is_tamable = "Ya" if monster.get("is_tamable") else "Tidak"
+                info = monster.get("info", "N/A")
+
+                map_name = (
+                    monster.get("map", {}).get("name_en")
+                    or monster.get("map", {}).get("name_id", "N/A")
+                )
+
                 drops = monster.get("items", [])
-                drop_names = ", ".join([item.get("name_en") or item.get("name_id", "Unknown") for item in drops]) if drops else "N/A"
+                drop_names = ", ".join([
+                    item.get("name_en") or item.get("name_id", "Unknown")
+                    for item in drops
+                ]) if drops else "N/A"
+
+                monster_id = monster.get("id", "")
 
                 summary_lines.append(
-                    f"{name_id} ({name_en}) | Lv: {level} | Elemen: {element} | Exp: {exp} | HP: {hp} | Lokasi: {map_name} | Drop: {drop_names} | Link: https://torampedia.my.id/monster/{monster_id}"
+                    f"{name_id} ({name_en}) | Tipe: {type_} | Lv: {level} | Elemen: {element} | Mode: {mode} | Exp: {exp} | HP: {hp} | Lokasi: {map_name} | Tameable: {is_tamable} | Info: {info} | Drop: {drop_names} | Link: https://torampedia.my.id/monster/{monster_id}"
                 )
 
             summary = "\n".join(summary_lines)
