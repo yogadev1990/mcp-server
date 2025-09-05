@@ -10,7 +10,8 @@ from tools.register_image_sender_tool import register_image_sender_tool
 from tools.search_item import register_search_item_tool
 from tools.search_monster import register_search_monster_tool
 from tools.search_skill import register_search_skill_tool
-
+from tools.vector_database import register_vector_search_tool
+from tools.search_libgen import register_libgen_search_tool
 
 
 from fastmcp import FastMCP
@@ -24,12 +25,15 @@ server = FastMCP(
 )
 
 # Register semua tools MCP
+
+register_vector_search_tool(server)
 register_order_checker_tool(server)
 register_katalog_tool(server)
 register_image_sender_tool(server)
 register_search_item_tool(server)
 register_search_monster_tool(server)
 register_search_skill_tool(server)
+register_libgen_search_tool(server)
 
 @app.route("/")
 def index():
