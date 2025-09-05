@@ -2,3 +2,4 @@ flask
 fastmcp
 requests
 pymilvus
+beautifulsoup4
