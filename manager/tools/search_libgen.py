@@ -35,7 +35,7 @@ def register_libgen_search_tool(server: FastMCP):
 
         try:
             print(f"[MCP] Mencari ebook: {query}")
-            search_url = f"{mirror}/search.php?req={query}&res={count}&columns%5B%5D=t&columns%5B%5D=a&columns%5B%5D=y&columns%5B%5D=p"
+            search_url = f"{mirror}/index.php?req={query}&res={count}&columns%5B%5D=t&columns%5B%5D=a&columns%5B%5D=y&columns%5B%5D=p"
             res = requests.get(search_url, headers=headers, timeout=10)
             res.raise_for_status()
 
