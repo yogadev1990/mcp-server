@@ -20,9 +20,13 @@ def get_download_link(md5: str, mirror: str) -> str:
                           "AppleWebKit/537.36 (KHTML, like Gecko) "
                           "Chrome/120.0.0.0 Safari/537.36"
         }
-        res = requests.get(ads_url, headers=headers, timeout=10)
-        res.raise_for_status()
+        res = requests.get(ads_url, headers=headers, timeout=10, allow_redirects=False)
 
+        # cek redirect langsung
+        if 300 <= res.status_code < 400 and "Location" in res.headers:
+            return res.headers["Location"]
+
+        # fallback parsing HTML
         soup = BeautifulSoup(res.text, "html.parser")
         link_el = soup.select_one('a[href^="get.php?md5="]')
         if link_el:
@@ -92,16 +96,21 @@ def register_libgen_search_tool(server: FastMCP):
             # ringkas hasil
             results = []
             summary_lines = []
-            for item in data:
+            for item in data.values():
                 title = item.get("title", "N/A")
                 author = item.get("author", "N/A")
                 publisher = item.get("publisher", "N/A")
                 year = item.get("year", "N/A")
                 pages = item.get("pages", "N/A")
                 lang = item.get("language", "N/A")
-                md5 = item.get("md5")
 
-                download = get_download_link(md5, mirror) if md5 else "N/A"
+                # Ambil MD5 dari 'files' jika ada
+                md5 = None
+                download_link = "N/A"
+                if "files" in item and item["files"]:
+                    file_id = list(item["files"].keys())[0]
+                    md5 = item["files"][file_id]["md5"]
+                    download_link = get_download_link(md5, mirror)
 
                 results.append({
                     "title": title,
@@ -111,11 +120,11 @@ def register_libgen_search_tool(server: FastMCP):
                     "pages": pages,
                     "lang": lang,
                     "md5": md5,
-                    "download": download,
+                    "download": download_link,
                 })
 
                 summary_lines.append(
-                    f"{title} | {author} | {publisher}, {year} | {pages} hlm | {lang} | {download}"
+                    f"{title} | {author} | {publisher}, {year} | {pages} hlm | {lang} | {download_link}"
                 )
 
             summary = "\n".join(summary_lines)
